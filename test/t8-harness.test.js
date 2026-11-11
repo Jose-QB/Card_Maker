@@ -10,7 +10,7 @@ const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.
 
 test('los comandos públicos del editor pasan por lanzadores aislados', () => {
   assert.equal(manifest.scripts.test, 'node scripts/safe-check.mjs test')
-  assert.equal(manifest.scripts.build, 'node scripts/safe-check.mjs build')
+  assert.equal(manifest.scripts.build, 'vite build')
   assert.equal(manifest.scripts.check, 'node scripts/safe-check.mjs check')
   assert.equal(manifest.scripts.dev, 'node scripts/safe-dev.mjs dev')
   assert.equal(manifest.scripts.preview, 'node scripts/safe-dev.mjs preview')
