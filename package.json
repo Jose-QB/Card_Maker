@@ -1,0 +1,19 @@
+{
+  "name": "editor-de-mazos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/safe-dev.mjs dev",
+    "preview": "node scripts/safe-dev.mjs preview",
+    "build": "node scripts/safe-check.mjs build",
+    "test": "node scripts/safe-check.mjs test",
+    "check": "node scripts/safe-check.mjs check"
+  },
+  "devDependencies": {
+    "vite": "^8.3.4"
+  },
+  "dependencies": {
+    "jspdf": "^4.2.1"
+  }
+}
