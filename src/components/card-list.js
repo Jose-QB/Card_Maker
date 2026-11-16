@@ -19,6 +19,19 @@ function renderFieldError(id, message) {
 }
 
 export function renderCardList(root, model, dispatch) {
+  if (model.state.deckType === 'word') {
+    root.innerHTML = `
+      <div class="word-card-summary">
+        ${model.state.wordCards.length === 0
+          ? '<p class="empty-state">Configura las listas y genera el mazo para ver sus cartas.</p>'
+          : model.state.wordCards.map((card) => `
+            <article class="card-row word-card-row" aria-labelledby="${escapeHtml(card.id)}-title">
+              <h3 id="${escapeHtml(card.id)}-title">${escapeHtml(card.name)}</h3>
+              <ul>${card.wordEntries.map((entry) => `<li><strong>${escapeHtml(entry.concept)}:</strong> ${escapeHtml(entry.word)}${entry.isFillRepeat ? ' <small>(repetida para completar)</small>' : ''}</li>`).join('')}</ul>
+            </article>`).join('')}
+      </div>`;
+    return;
+  }
   const diagnostics = model.diagnostics ?? [];
   const uploadStatus = model.state.uploadStatus;
   const selectedCard = model.state.cards.find((card) => card.id === model.state.selectedCardId) ?? null;

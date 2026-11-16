@@ -10,6 +10,15 @@ import { exportLayoutToPdf } from './services/pdf-exporter.js';
 import { createBackDesign } from './utils/back-design.js';
 import { deriveBackPages } from './utils/back-layout.js';
 import { renderBackControls } from './components/back-controls.js';
+import { renderDeckTabs, renderWordDeckControls } from './components/word-controls.js';
+import { renderFlowSteps } from './components/flow-steps.js';
+import { renderStatusSummary } from './components/status-summary.js';
+import {
+  createWordDeckConfig,
+  createWordEntries,
+  distributeWordEntries,
+  validateWordDeckConfig
+} from './utils/word-decks.js';
 
 const DEFAULT_CONFIG_INPUT = Object.freeze({
   paper: 'a4',
@@ -24,6 +33,12 @@ const DEFAULT_CONFIG_INPUT = Object.freeze({
   margins: Object.freeze({ top: 0, right: 0, bottom: 0, left: 0 }),
   padding: 0,
   visualMode: 'normal'
+});
+
+const DEFAULT_WORD_DECK_INPUT = Object.freeze({
+  card: Object.freeze({ width: 63, height: 88 }),
+  lists: Object.freeze([]),
+  wordsPerCard: 1
 });
 
 function mergeConfigInput(current, changes = {}) {
@@ -51,9 +66,28 @@ function resolveSelectedCardId(selectedCardId, cards) {
     : cards[0]?.id ?? null;
 }
 
+function generateWordCards(wordDeckInput, random = Math.random) {
+  const result = validateWordDeckConfig(wordDeckInput);
+  if (!result.valid) return { cards: [], diagnostics: result.errors };
+  const config = createWordDeckConfig(wordDeckInput);
+  const entries = createWordEntries(config);
+  const cards = distributeWordEntries(entries, config.wordsPerCard, random)
+    .map((wordEntries, index) => ({
+      id: `word-card-${index + 1}`,
+      name: `Carta ${index + 1}`,
+      quantity: 1,
+      wordEntries
+    }));
+  return { cards, diagnostics: [] };
+}
+
 export function createInitialState() {
   return {
+    deckType: 'image',
     cards: [],
+    wordDeckInput: structuredClone(DEFAULT_WORD_DECK_INPUT),
+    wordCards: [],
+    selectedWordListIndex: 0,
     configInput: structuredClone(DEFAULT_CONFIG_INPUT),
     order: 'normal',
     currentPage: 1,
@@ -71,6 +105,41 @@ export function createInitialState() {
 
 export function updateAppState(state, action) {
   switch (action?.type) {
+    case 'set-deck-type':
+      return {
+        ...state,
+        deckType: action.deckType === 'word' ? 'word' : 'image',
+        currentPage: 1,
+        diagnostics: []
+      };
+    case 'set-word-config':
+      {
+        const wordDeckInput = {
+          ...state.wordDeckInput,
+          ...action.changes,
+          card: { ...state.wordDeckInput.card, ...(action.changes?.card ?? {}) },
+          lists: action.changes?.lists ?? state.wordDeckInput.lists
+        };
+        const generated = generateWordCards(wordDeckInput, action.random ?? Math.random);
+        return {
+        ...state,
+        wordDeckInput,
+        wordCards: generated.cards,
+        selectedWordListIndex: Math.min(state.selectedWordListIndex, Math.max(0, wordDeckInput.lists.length - 1)),
+        currentPage: 1,
+        diagnostics: generated.diagnostics
+        };
+      }
+    case 'set-word-list':
+      return {
+        ...state,
+        selectedWordListIndex: Math.max(0, Math.min(action.index, state.wordDeckInput.lists.length - 1))
+      };
+    case 'generate-word-deck':
+      {
+        const generated = generateWordCards(state.wordDeckInput, action.random ?? Math.random);
+        return { ...state, wordCards: generated.cards, currentPage: 1, diagnostics: generated.diagnostics };
+      }
     case 'set-config':
       return {
         ...state,
@@ -186,10 +255,22 @@ function getConfigModel(configInput) {
 }
 
 export function deriveAppModel(state) {
-  const { config, errors } = getConfigModel(state.configInput);
+  const wordResult = state.deckType === 'word'
+    ? validateWordDeckConfig(state.wordDeckInput)
+    : { errors: [], config: null };
+  const physicalInput = state.deckType === 'word'
+    ? mergeConfigInput(state.configInput, {
+      card: state.wordDeckInput.card,
+      dimensionsMode: 'shared',
+      cardTypes: {}
+    })
+    : state.configInput;
+  const { config, errors: physicalErrors } = getConfigModel(physicalInput);
+  const errors = [...physicalErrors, ...(wordResult.errors ?? [])];
+  const cards = state.deckType === 'word' ? state.wordCards : state.cards;
   const layout = calculateLayout({
     config,
-    cards: state.cards,
+    cards,
     order: state.order,
     currentPage: state.currentPage
   });
@@ -208,6 +289,7 @@ export function deriveAppModel(state) {
 
   return {
     state,
+    cards,
     config,
     layout,
     backDesign: effectiveBackDesign,
@@ -237,26 +319,28 @@ function createShell(root) {
       <h1 id="page-title">Generador de hojas de cartas</h1>
       <p>Configura tus cartas y prepara una composición física para imprimir.</p>
     </header>
+    <div id="flow-root"></div>
     <div class="app-grid">
-      <section class="panel config-panel" aria-labelledby="config-title">
+      <section id="configure-section" class="panel config-panel" aria-labelledby="config-title">
         <h2 id="config-title">Configuración física</h2>
         <div id="controls-root"></div>
-        <section class="document-status" aria-labelledby="diagnostics-title">
+        <div id="status-summary-root"></div>
+        <section id="export-section" class="document-status" aria-labelledby="diagnostics-title">
           <h3 id="diagnostics-title">Estado del documento</h3>
           <div id="diagnostics" aria-live="assertive" role="alert"></div>
           <div id="stats" aria-live="polite"></div>
           <div id="output-actions"></div>
         </section>
       </section>
-      <section class="panel cards-panel" aria-labelledby="cards-title">
+      <section id="prepare-section" class="panel cards-panel" aria-labelledby="cards-title">
         <h2 id="cards-title">Cartas</h2>
         <div id="cards-root"></div>
       </section>
-      <section class="panel backs-panel" aria-labelledby="backs-title">
+      <section id="backs-section" class="panel backs-panel" aria-labelledby="backs-title">
         <h2 id="backs-title">Respaldos</h2>
         <div id="back-controls-root"></div>
       </section>
-      <section class="panel preview-panel" aria-labelledby="preview-title">
+      <section id="review-section" class="panel preview-panel" aria-labelledby="preview-title">
         <h2 id="preview-title">Previsualización</h2>
         <div id="preview-mode-root"></div>
         <div id="preview-root"></div>
@@ -268,6 +352,8 @@ function createShell(root) {
 function renderApp(root, state, setState) {
   const model = deriveAppModel(state);
   const controlsRoot = root.querySelector('#controls-root');
+  const flowRoot = root.querySelector('#flow-root');
+  const summaryRoot = root.querySelector('#status-summary-root');
   const cardsRoot = root.querySelector('#cards-root');
   const backControlsRoot = root.querySelector('#back-controls-root');
   const diagnostics = root.querySelector('#diagnostics');
@@ -276,9 +362,22 @@ function renderApp(root, state, setState) {
   const previewRoot = root.querySelector('#preview-root');
   const previewModeRoot = root.querySelector('#preview-mode-root');
   const paginationRoot = root.querySelector('#pagination-root');
+  const cardsTitle = root.querySelector('#cards-title');
 
+  renderFlowSteps(flowRoot, model);
+  renderStatusSummary(summaryRoot, model);
   renderControls(controlsRoot, model, setState);
-  renderCardList(cardsRoot, model, setState);
+  renderDeckTabs(controlsRoot, model, setState);
+  cardsRoot.innerHTML = '';
+  if (state.deckType === 'word') {
+    cardsTitle.textContent = 'Listas y palabras';
+    renderWordDeckControls(cardsRoot, model, setState);
+  } else {
+    cardsTitle.textContent = 'Cartas';
+    const imageCardsRoot = document.createElement('div');
+    cardsRoot.append(imageCardsRoot);
+    renderCardList(imageCardsRoot, model, setState);
+  }
   renderBackControls(backControlsRoot, model, setState);
   previewModeRoot.innerHTML = model.hasBacks ? `
     <div class="preview-mode" role="group" aria-label="Vista de impresión">
@@ -301,7 +400,7 @@ function renderApp(root, state, setState) {
     </dl>`;
   outputActions.innerHTML = `
     <p class="integration-note">El PDF se genera localmente usando la misma composición de la previsualización.</p>
-    <button type="button" data-action="export-pdf" aria-describedby="export-status" ${model.actions.canExport ? '' : 'disabled aria-disabled="true"'}>Generar PDF</button>
+    <button type="button" data-action="export-pdf" aria-describedby="export-status" ${model.actions.canExport ? '' : 'disabled aria-disabled="true"'}>Exportar PDF</button>
     ${state.exportStatus ? `<p id="export-status" role="${state.exportStatus.kind === 'error' ? 'alert' : 'status'}" class="${state.exportStatus.kind === 'error' ? 'status-error' : 'status-ok'}">${escapeHtml(state.exportStatus.message)}</p>` : '<p id="export-status" class="visually-hidden" aria-live="polite"></p>'}`;
   outputActions.querySelector('[data-action="export-pdf"]').addEventListener('click', () => {
     try {

@@ -86,6 +86,7 @@ function renderEmptyState(view) {
 
 function renderCard(position, paper, viewMode) {
   const item = position.item ?? {};
+  const isWordCard = viewMode !== 'back' && Array.isArray(item.wordEntries);
   const image = viewMode === 'back' ? position.backImage?.dataUrl : item.image?.dataUrl;
   const left = (position.x / paper.width) * 100;
   const top = (position.y / paper.height) * 100;
@@ -96,9 +97,15 @@ function renderCard(position, paper, viewMode) {
   const contentWidth = viewMode === 'back' ? 100 : (position.contentWidth / position.width) * 100;
   const contentHeight = viewMode === 'back' ? 100 : (position.contentHeight / position.height) * 100;
 
+  const wordContent = isWordCard
+    ? (() => {
+      const scale = Math.max(0.45, Math.min(1, 1 / Math.sqrt(item.wordEntries.length)));
+      return `<div class="preview-word-entries" style="--entry-scale:${scale};--entry-count:${item.wordEntries.length}">${item.wordEntries.map((entry) => `<p style="--concept-color:${escapeHtml(entry.color ?? '#f39b48')}"><span class="preview-word-concept">${escapeHtml(entry.concept)}</span><span class="preview-word-value">${escapeHtml(entry.word)}</span></p>`).join('')}</div>`;
+    })()
+    : null;
   return `
     <div class="preview-card" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%" aria-label="${escapeHtml(item.name ?? 'Carta')}" data-card-id="${escapeHtml(item.id)}">
-      ${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(viewMode === 'back' ? `Respaldo de ${item.name ?? 'carta'}` : item.name ?? 'Carta')}" style="left:${contentLeft}%;top:${contentTop}%;width:${contentWidth}%;height:${contentHeight}%">` : '<span class="preview-card-placeholder">Sin imagen</span>'}
+      ${wordContent ?? (image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(viewMode === 'back' ? `Respaldo de ${item.name ?? 'carta'}` : item.name ?? 'Carta')}" style="left:${contentLeft}%;top:${contentTop}%;width:${contentWidth}%;height:${contentHeight}%">` : '<span class="preview-card-placeholder">Sin imagen</span>')}
     </div>`;
 }
 

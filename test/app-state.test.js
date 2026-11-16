@@ -18,6 +18,59 @@ test('el estado inicial tiene una sola fuente de configuración y layout derivad
   assert.equal(model.layout.capacity, 9);
   assert.equal(model.stats.totalCards, 0);
   assert.equal(model.stats.totalPages, 0);
+  assert.equal(state.deckType, 'image');
+});
+
+test('genera un mazo de palabras y lo entrega al mismo layout físico', () => {
+  let state = updateAppState(createInitialState(), { type: 'set-deck-type', deckType: 'word' });
+  state = updateAppState(state, {
+    type: 'set-word-config',
+    changes: {
+      card: { width: 63, height: 88 },
+      lists: [
+        { concept: 'Animales', words: ['gato', 'perro'] },
+        { concept: 'Colores', words: ['azul'] }
+      ],
+      wordsPerCard: 2
+    }
+  });
+  const generated = updateAppState(state, { type: 'generate-word-deck', random: () => 0 });
+  const model = deriveAppModel(generated);
+
+  assert.equal(generated.deckType, 'word');
+  assert.equal(generated.wordCards.length, 2);
+  assert.equal(model.layout.valid, true);
+  assert.equal(model.stats.totalCards, 2);
+  assert.ok(model.layout.items.every((item) => Array.isArray(item.wordEntries)));
+});
+
+test('el modo palabras regenera automáticamente al cambiar una configuración válida', () => {
+  let state = updateAppState(createInitialState(), { type: 'set-deck-type', deckType: 'word' });
+  state = updateAppState(state, {
+    type: 'set-word-config',
+    changes: {
+      lists: [{ concept: 'Animales', words: ['gato', 'perro', 'pez'] }],
+      wordsPerCard: 2
+    }
+  });
+
+  assert.equal(state.wordCards.length, 2);
+  const changed = updateAppState(state, { type: 'set-word-config', changes: { wordsPerCard: 1 } });
+
+  assert.equal(changed.wordCards.length, 3);
+  assert.equal(changed.diagnostics.length, 0);
+});
+
+test('un cambio inválido limpia las cartas de palabras generadas', () => {
+  let state = updateAppState(createInitialState(), { type: 'set-deck-type', deckType: 'word' });
+  state = updateAppState(state, {
+    type: 'set-word-config',
+    changes: { lists: [{ concept: 'Animales', words: ['gato'] }], wordsPerCard: 1 }
+  });
+  const invalid = updateAppState(state, { type: 'set-word-config', changes: { wordsPerCard: 0 } });
+
+  assert.equal(invalid.wordCards.length, 0);
+  assert.ok(invalid.diagnostics.length > 0);
 });
 
 test('la selección de carta se conserva al editar y se inicializa al agregar', () => {

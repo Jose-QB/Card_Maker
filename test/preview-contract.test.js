@@ -143,3 +143,32 @@ test('el render de preview omite hoja para estados vacío e inválido', () => {
   assert.doesNotMatch(root.innerHTML, /class="preview-sheet"/);
   assert.match(root.innerHTML, /Dimensiones inválidas/);
 });
+
+test('las cartas de palabras reservan espacio para todas las entradas en horizontal', async () => {
+  const root = { innerHTML: '' };
+  const position = {
+    item: {
+      id: 'word-card-1',
+      name: 'Carta 1',
+      wordEntries: [
+        { concept: 'Acción', word: 'Correr', color: '#f39b48' },
+        { concept: 'Lugar', word: 'Bosque', color: '#18724a' },
+        { concept: 'Objeto', word: 'Brújula', color: '#23677a' }
+      ]
+    },
+    x: 0, y: 0, width: 63, height: 88,
+    contentX: 0, contentY: 0, contentWidth: 63, contentHeight: 88
+  };
+
+  renderPreview(root, {
+    layout: createLayout({ pages: [[position]], currentPage: 1, totalPages: 1 }),
+    totalCards: 1
+  });
+
+  assert.match(root.innerHTML, /--entry-count:3/);
+  assert.equal((root.innerHTML.match(/class="preview-word-value"/g) ?? []).length, 3);
+
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /container-type: size/);
+  assert.match(html, /cqh/);
+});
