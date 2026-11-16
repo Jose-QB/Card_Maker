@@ -48,9 +48,15 @@ function createPdfDouble() {
       calls.push(['constructor', options]);
       return {
         addPage(format, orientation) { calls.push(['addPage', format, orientation]); },
+        setPage(pageNumber) { calls.push(['setPage', pageNumber]); },
         setDrawColor(...args) { calls.push(['setDrawColor', ...args]); },
+        setFillColor(...args) { calls.push(['setFillColor', ...args]); },
+        setTextColor(...args) { calls.push(['setTextColor', ...args]); },
+        setFontSize(value) { calls.push(['setFontSize', value]); },
         setLineWidth(value) { calls.push(['setLineWidth', value]); },
         rect(...args) { calls.push(['rect', ...args]); },
+        roundedRect(...args) { calls.push(['roundedRect', ...args]); },
+        text(...args) { calls.push(['text', ...args]); },
         addImage(...args) { calls.push(['addImage', ...args]); },
         save(filename) { saves += 1; calls.push(['save', filename]); }
       };
@@ -83,6 +89,24 @@ test('la exportación crea una página PDF por cada página del LayoutModel', ()
 
   assert.equal(pdf.calls.filter((call) => call[0] === 'addPage').length, 1);
   assert.equal(pdf.saves, 1);
+});
+
+test('la exportación dibuja también el contenido de la última página', () => {
+  const pdf = createPdfDouble();
+  const first = createLayout().pages[0][0];
+  const pages = [
+    [{ ...first, item: { ...first.item, id: 'card-1', name: 'Primera' } }],
+    [{ ...first, item: { ...first.item, id: 'card-2', name: 'Última', image: { dataUrl: 'data:image/png;base64,CC==', mimeType: 'image/png' } } }]
+  ];
+
+  exportLayoutToPdf(createLayout({ pages, items: pages.flat().map((position) => position.item), totalPages: 2 }), {
+    jsPDFFactory: pdf.factory
+  });
+
+  const images = pdf.calls.filter((call) => call[0] === 'addImage');
+  assert.equal(images.length, 2);
+  assert.equal(images.at(-1)[1], 'data:image/png;base64,CC==');
+  assert.ok(pdf.calls.some((call) => call[0] === 'setPage' && call[1] === 2));
 });
 
 test('cero cartas bloquea la descarga sin crear un documento falso', () => {
@@ -182,8 +206,35 @@ test('la exportación coloca todos los frentes antes que los respaldos', () => {
   exportLayoutToPdf(layout, { jsPDFFactory: pdf.factory, backPages });
   const imageCalls = pdf.calls.filter((call) => call[0] === 'addImage');
   assert.equal(imageCalls.length, 2);
+  assert.equal(pdf.calls.filter((call) => call[0] === 'addPage').length, 1);
   assert.equal(imageCalls[0][1], layout.pages[0][0].item.image.dataUrl);
   assert.equal(imageCalls[1][1], backImage.dataUrl);
+});
+
+test('la exportación de palabras conserva el diseño visual de la preview', () => {
+  const pdf = createPdfDouble();
+  const layout = createLayout({
+    items: [{ id: 'word-card-1', wordEntries: [] }],
+    pages: [[{
+      item: {
+        id: 'word-card-1',
+        wordEntries: [
+          { concept: 'Acción', word: 'Correr', color: '#f39b48' },
+          { concept: 'Lugar', word: 'Bosque', color: '#18724a' }
+        ]
+      },
+      x: 10, y: 12, width: 63, height: 88,
+      contentX: 10, contentY: 12, contentWidth: 63, contentHeight: 88
+    }]]
+  });
+
+  exportLayoutToPdf(layout, { jsPDFFactory: pdf.factory });
+
+  assert.ok(pdf.calls.some((call) => call[0] === 'roundedRect'));
+  assert.ok(pdf.calls.some((call) => call[0] === 'setFillColor' && call.slice(1).join(',') === '243,155,72'));
+  assert.ok(pdf.calls.some((call) => call[0] === 'text' && call[1] === 'Correr'));
+  assert.ok(pdf.calls.some((call) => call[0] === 'text' && call[1] === 'Acción'));
+  assert.ok(pdf.calls.some((call) => call[0] === 'setFontSize' && call[1] >= 16));
 });
 
 test('la exportación consume las coordenadas reflejadas por el layout de respaldos', () => {
